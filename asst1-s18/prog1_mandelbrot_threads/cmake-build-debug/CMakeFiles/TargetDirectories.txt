@@ -1,3 +1,0 @@
-/home/xtayex/Documents/cmu15418/asst1-s18/prog1_mandelbrot_threads/cmake-build-debug/CMakeFiles/mandelbrot.dir
-/home/xtayex/Documents/cmu15418/asst1-s18/prog1_mandelbrot_threads/cmake-build-debug/CMakeFiles/edit_cache.dir
-/home/xtayex/Documents/cmu15418/asst1-s18/prog1_mandelbrot_threads/cmake-build-debug/CMakeFiles/rebuild_cache.dir

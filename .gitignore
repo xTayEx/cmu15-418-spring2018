@@ -31,3 +31,9 @@
 *.out
 *.app
 
+*.ppm
+.cache
+.local-history
+.idea
+cmake-build-debug
+build
