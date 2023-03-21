@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/mandelbrot.dir/main.cpp.o "CMakeFiles/mandelbrot.dir/home/xtayex/Documents/cmu15418/asst1-s18/common/ppm.cpp.o" "CMakeFiles/mandelbrot.dir/home/xtayex/Documents/cmu15418/asst1-s18/common/tasksys.cpp.o" CMakeFiles/mandelbrot.dir/mandelbrot.cpp.o -o mandelbrot  -lpthread 
