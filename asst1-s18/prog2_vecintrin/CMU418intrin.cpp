@@ -256,6 +256,7 @@ void _cmu418_vbitand_int(__cmu418_vec_int &vecResult, __cmu418_vec_int &veca,
   for (int i = 0; i < VECTOR_WIDTH; i++)
     vecResult.value[i] =
         mask.value[i] ? (veca.value[i] & vecb.value[i]) : vecResult.value[i];
+  CMU418Logger.addLog("vbitand", mask, VECTOR_WIDTH);
 }
 
 template void _cmu418_vdiv<float>(__cmu418_vec_float &vecResult,

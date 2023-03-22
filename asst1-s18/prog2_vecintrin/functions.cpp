@@ -1,6 +1,9 @@
 #include "CMU418intrin.h"
 #include "logger.h"
 #include <algorithm>
+#include <iostream>
+#include <fmt/core.h>
+#include <fmt/ranges.h>
 using namespace std;
 
 void absSerial(float *values, float *output, int N) {
@@ -77,51 +80,54 @@ void clampedExpSerial(float *values, int *exponents, float *output, int N) {
   }
 }
 
-
 void clampedExpVector(float *values, int *exponents, float *output, int N) {
   // Implement your vectorized version of clampedExpSerial here
   //  ...
-	
-	__cmu418_vec_float result = _cmu418_vset_float(1.0f);
-	__cmu418_vec_float clampThreshold = _cmu418_vset_float(4.18f);
-	__cmu418_vec_float positiveMask;
-	__cmu418_vec_float x;
-	__cmu418_vec_int zeroInt = _cmu418_vset_int(0);
-	__cmu418_vec_float zeroFloat = _cmu418_vset_float(0.0f);
-	__cmu418_vec_int ones = _cmu418_vset_int(1);
-	__cmu418_vec_int exps;
-	__cmu418_vec_int allBitOnes = _cmu418_vset_int(0xff);
-	__cmu418_vec_int bitandResult;
-	__cmu418_mask maskAll, maskGreaterThanZero, leastOne;
-	__cmu418_mask eqZeroMask, neqZeroMask, clampMask;
-	
-	int idx;
-	for (idx = 0; idx + VECTOR_WIDTH < N; idx += VECTOR_WIDTH) {
-		maskAll = _cmu418_init_ones();
-		_cmu418_vload_float(x, values + idx, maskAll);
-		_cmu418_vload_int(exps, exponents + idx, maskAll);
-		
-		while (true) {
-			_cmu418_vgt_int(maskGreaterThanZero, exps, zeroInt, maskAll);
-			if (!_cmu418_cntbits(maskGreaterThanZero)) {
-				break;
-			}
-			_cmu418_vbitand_int(bitandResult, exps, ones, maskAll);	
-			_cmu418_veq_int(eqZeroMask, bitandResult, zeroInt, maskAll);
-			neqZeroMask = _cmu418_mask_not(eqZeroMask);
-			_cmu418_vmult_float(result, result, x, neqZeroMask);
-			_cmu418_vmult_float(x, x, x, maskAll);
-			_cmu418_vshiftright_int(exps, exps, ones, maskAll);
 
-			// vector min
-			_cmu418_vgt_float(clampMask, result, clampThreshold, maskAll);
-			_cmu418_vadd_float(result, zeroFloat, clampThreshold, clampMask);
-			_cmu418_vstore_float(output + idx, result, maskAll);
-		}
-	}
-	if (idx != N) {
-		clampedExpSerial(values + idx, exponents + idx, output + idx, N - idx);
-	}
+  __cmu418_vec_float clampThreshold = _cmu418_vset_float(4.18f);
+  __cmu418_vec_float positiveMask;
+  __cmu418_vec_float x;
+  __cmu418_vec_int zeroInt = _cmu418_vset_int(0);
+  __cmu418_vec_float zeroFloat = _cmu418_vset_float(0.0f);
+  __cmu418_vec_int ones = _cmu418_vset_int(1);
+  __cmu418_vec_int exps;
+  __cmu418_vec_int allBitOnes = _cmu418_vset_int(0xff);
+  __cmu418_vec_int bitandResult;
+  __cmu418_mask maskAll, maskGreaterThanZero, leastOne;
+  __cmu418_mask eqZeroMask, neqZeroMask, clampMask;
+  maskAll = _cmu418_init_ones();
+  
+  int residual = N % VECTOR_WIDTH;
+
+  int idx = 0;
+  for (idx = 0; idx < N - residual; idx += VECTOR_WIDTH) {
+    __cmu418_vec_float result = _cmu418_vset_float(1.0f);
+    _cmu418_vload_float(x, values + idx, maskAll);
+    _cmu418_vload_int(exps, exponents + idx, maskAll);
+
+    while (true) {
+      _cmu418_vgt_int(maskGreaterThanZero, exps, zeroInt, maskAll);
+      if (!_cmu418_cntbits(maskGreaterThanZero)) {
+        break;
+      }
+      _cmu418_vbitand_int(bitandResult, exps, ones, maskAll);
+      _cmu418_veq_int(eqZeroMask, bitandResult, zeroInt, maskAll);
+      neqZeroMask = _cmu418_mask_not(eqZeroMask);
+      _cmu418_vmult_float(result, result, x, neqZeroMask);
+      _cmu418_vmult_float(x, x, x, maskAll);
+
+      _cmu418_vshiftright_int(exps, exps, ones, maskAll);
+
+    }
+    // clamp
+    _cmu418_vgt_float(clampMask, result, clampThreshold, maskAll);
+    _cmu418_vadd_float(result, zeroFloat, clampThreshold, clampMask);
+    _cmu418_vstore_float(output + idx, result, maskAll);
+
+  }
+  if (residual) {
+    clampedExpSerial(values + idx, exponents + idx, output + idx, residual);
+  }
 }
 
 float arraySumSerial(float *values, int N) {
