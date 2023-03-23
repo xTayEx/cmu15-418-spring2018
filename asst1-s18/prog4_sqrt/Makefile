@@ -1,6 +1,6 @@
 CXX=g++ -m64
 CXXFLAGS=-I../common -Iobjs/ -O3 -Wall
-ISPC=ispc
+ISPC=/home/xtayex/Downloads/ispc-v1.19.0-linux/bin/ispc
 # note: change target to avx for AVX capable machines
 ISPCFLAGS=-O2 --target=avx2-i32x8 --arch=x86-64
 
