@@ -1,6 +1,7 @@
 #include "CMU418intrin.h"
 #include "logger.h"
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -144,4 +145,18 @@ float arraySumSerial(float *values, int N) {
 float arraySumVector(float *values, int N) {
   // Implement your vectorized version here
   //  ...
+  __cmu418_vec_float x;
+  __cmu418_mask maskAll;
+  maskAll = _cmu418_init_ones();
+  float sum = 0;
+  int partitions = log2(VECTOR_WIDTH);
+  for (int i = 0; i < N; i += VECTOR_WIDTH) {
+    _cmu418_vload_float(x, values + i, maskAll);
+    for (int j = 0; j < partitions; ++j) {
+      _cmu418_hadd_float(x, x);
+      _cmu418_interleave_float(x, x);
+    }
+    sum += x.value[0];
+  }
+  return sum;
 }

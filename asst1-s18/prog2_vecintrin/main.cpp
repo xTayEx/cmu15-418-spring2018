@@ -92,6 +92,7 @@ int main(int argc, char *argv[]) {
   if (N % VECTOR_WIDTH == 0) {
     float sumGold = arraySumSerial(values, N);
     float sumOutput = arraySumVector(values, N);
+    printf("sumGold = %f, sumOutput = %f\n", sumGold, sumOutput);
     float epsilon = 0.1;
     bool sumCorrect = abs(sumGold - sumOutput) < epsilon * 2;
     if (!sumCorrect) {
@@ -149,13 +150,13 @@ bool verifyResult(float *values, int *exponents, float *output, float *gold,
     if (incorrect >= N)
       printf("You have written to out of bound value!\n");
     printf("Wrong calculation at value[%d]!\n", incorrect);
-    printf("value  = ");
+    printf("value = ");
     for (int i = 0; i < N; i++) {
       printf("% f ", values[i]);
     }
     printf("\n");
 
-    printf("exp    = ");
+    printf("exp = ");
     for (int i = 0; i < N; i++) {
       printf("% 9d ", exponents[i]);
     }
@@ -167,9 +168,9 @@ bool verifyResult(float *values, int *exponents, float *output, float *gold,
     }
     printf("\n");
 
-    printf("gold   = ");
+    printf("gold = ");
     for (int i = 0; i < N; i++) {
-      printf("% f ", gold[i]);
+      printf("%f ", gold[i]);
     }
     printf("\n");
     return false;
