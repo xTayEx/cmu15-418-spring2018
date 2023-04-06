@@ -29,27 +29,25 @@ static inline int nextPow2(int n) {
 
 constexpr int MAX_BLOCK_SIZE = 512;
 
-__global__ void upsweep(int *arr, int length, int twod) {
-  int twod1 = 2 * twod;
-  int j = blockIdx.x * blockDim.x + threadIdx.x;
-  int i = j * twod1;
-
-  arr[i + twod1 - 1] += arr[i + twod - 1];
-  
+__global__ void upsweep(int *arr, int offset) {
+  int thid = blockIdx.x * blockDim.x + threadIdx.x;
+  int ai = offset * (2 * thid + 1) - 1;
+  int bi = offset * (2 * thid + 2) - 1;
+  arr[bi] += arr[ai]; 
 }
 
-__global__ void downsweep(int *arr, int length, int twod) {
-  if (twod == length / 2) {
-    arr[length - 1] = 0;
-  }
+__global__ void downsweep(int *arr, int offset) {
+  int thid = blockIdx.x * blockDim.x + threadIdx.x;
+  int ai = offset * (2 * thid + 1) - 1;
+  int bi = offset * (2 * thid + 2) - 1;
 
-  int twod1 = 2 * twod;
-  int j = blockIdx.x * blockDim.x + threadIdx.x;
-  int i = j * twod1;
+  int tmp = arr[ai];
+  arr[ai] = arr[bi];
+  arr[bi] += tmp;
+}
 
-  int tmp = arr[i + twod - 1];
-  arr[i + twod - 1] = arr[i + twod1 - 1];
-  arr[i + twod1 - 1] += tmp;
+__global__ void clear(int *arr, int length) {
+  arr[length - 1] = 0;
 }
 
 void exclusive_scan(int *device_start, int length, int *device_result) {
@@ -62,22 +60,33 @@ void exclusive_scan(int *device_start, int length, int *device_result) {
    * both the input and the output arrays are sized to accommodate the next
    * power of 2 larger than the input.
    */
-  for (int twod = 1; twod < length / 2; twod *= 2) {
-    int twod1 = 2 * twod;
-    int block_size = (length / twod1 > MAX_BLOCK_SIZE ? MAX_BLOCK_SIZE : length / twod1);
-    int grid_size = (block_size + MAX_BLOCK_SIZE - 1) / MAX_BLOCK_SIZE;
-    // std::cout << "grid_size = " << grid_size << " block_size = " << block_size << std::endl;
-    upsweep<<<grid_size, block_size>>>(device_result, length, twod);
-    cudaDeviceSynchronize();
+  int block_size = MAX_BLOCK_SIZE;
+  int offset = 1;
+  int d = length / 2;
+  for (;d > block_size; d /= 2) {
+    int grid_size = d / block_size;
+    upsweep<<<grid_size, block_size>>>(device_result, offset);
+    offset *= 2;
+  }
+  while (d > 0) {
+    upsweep<<<1, d>>>(device_result, offset);
+    offset *= 2;
+    d /= 2;
   }
 
-  for (int twod = length / 2; twod > 0; twod /= 2) {
-    int twod1 = 2 * twod;
-    int block_size = (length / twod1 > MAX_BLOCK_SIZE ? MAX_BLOCK_SIZE : length / twod1);
-    int grid_size = (block_size + MAX_BLOCK_SIZE - 1) / MAX_BLOCK_SIZE;
-    // std::cout << "grid_size = " << grid_size << " block_size = " << block_size << std::endl;
-    downsweep<<<grid_size, block_size>>>(device_result, length, twod);
-    cudaDeviceSynchronize();
+  clear<<<1, 1>>>(device_result, length);
+  
+  d = 1;
+  while (d <= block_size) {
+    offset /= 2;
+    downsweep<<<1, d>>>(device_result, offset);
+    d *= 2;
+  }
+
+  for (;d < length; d *= 2) {
+    offset /= 2;
+    int grid_size = d / block_size;
+    downsweep<<<grid_size, block_size>>>(device_result, offset);
   }
 
 }

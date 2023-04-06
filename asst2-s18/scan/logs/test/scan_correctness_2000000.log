@@ -5,4 +5,5 @@ Device 0: NVIDIA GeForce MX150
    Global mem: 2003 MB
    CUDA Cap:   6.1
 ---------------------------------------------------------
-GPU_time: 0.527 ms
+GPU_time: 8.318 ms
+Scan outputs are correct!
