@@ -1,4 +1,3 @@
-#include <iostream>
 #include <stdio.h>
 
 #include <cuda.h>
@@ -27,30 +26,9 @@ static inline int nextPow2(int n) {
   return n;
 }
 
-constexpr int MAX_BLOCK_SIZE = 512;
+constexpr int BLOCK_SIZE = 512;
 
-__global__ void upsweep(int *arr, int offset) {
-  int thid = blockIdx.x * blockDim.x + threadIdx.x;
-  int ai = offset * (2 * thid + 1) - 1;
-  int bi = offset * (2 * thid + 2) - 1;
-  arr[bi] += arr[ai]; 
-}
-
-__global__ void downsweep(int *arr, int offset) {
-  int thid = blockIdx.x * blockDim.x + threadIdx.x;
-  int ai = offset * (2 * thid + 1) - 1;
-  int bi = offset * (2 * thid + 2) - 1;
-
-  int tmp = arr[ai];
-  arr[ai] = arr[bi];
-  arr[bi] += tmp;
-}
-
-__global__ void clear(int *arr, int length) {
-  arr[length - 1] = 0;
-}
-
-void exclusive_scan(int *device_start, int length, int *device_result) {
+__global__ void exclusive_scan(int *device_start, int length, int *device_result) {
   /* Fill in this function with your exclusive scan implementation.
    * You are passed the locations of the input and output in device memory,
    * but this is host code -- you will need to declare one or more CUDA
@@ -60,35 +38,46 @@ void exclusive_scan(int *device_start, int length, int *device_result) {
    * both the input and the output arrays are sized to accommodate the next
    * power of 2 larger than the input.
    */
-  int block_size = MAX_BLOCK_SIZE;
+
+  extern __shared__ int temp[];
+  int tid = threadIdx.x;
   int offset = 1;
-  int d = length / 2;
-  for (;d > block_size; d /= 2) {
-    int grid_size = d / block_size;
-    upsweep<<<grid_size, block_size>>>(device_result, offset);
-    offset *= 2;
-  }
-  while (d > 0) {
-    upsweep<<<1, d>>>(device_result, offset);
-    offset *= 2;
-    d /= 2;
-  }
 
-  clear<<<1, 1>>>(device_result, length);
+  temp[2 * tid] = device_start[2 * tid];
+  temp[2 * tid + 1] = device_start[2 * tid + 1];
   
-  d = 1;
-  while (d <= block_size) {
-    offset /= 2;
-    downsweep<<<1, d>>>(device_result, offset);
-    d *= 2;
+  // upsweep
+
+  for (int d = (length >> 1); d > 0; d >>= 1) {
+    __syncthreads();
+    if (tid < d) {
+      int ai = offset * (2 * tid + 1) - 1;
+      int bi = offset * (2 * tid + 2) - 1;
+      temp[bi] += temp[ai];
+    }
+    offset *= 2;
   }
 
-  for (;d < length; d *= 2) {
-    offset /= 2;
-    int grid_size = d / block_size;
-    downsweep<<<grid_size, block_size>>>(device_result, offset);
-  }
+  // downsweep
 
+  if (tid == 0) {
+    temp[length - 1] = 0;
+  }
+  for (int d = 1; d < length; d *= 2) {
+    offset >>= 1;
+    __syncthreads();
+    if (tid < d) {
+      int ai = offset * (2 * tid + 1) - 1;
+      int bi = offset * (2 * tid + 2) - 1;
+      float t = temp[ai];
+      temp[ai] = temp[bi];
+      temp[bi] += t;
+    }
+  }
+  __syncthreads();
+
+  device_result[2 * tid] = temp[2 * tid];
+  device_result[2 * tid + 1] = temp[2 * tid + 1];
 }
 
 /* This function is a wrapper around the code you will write - it copies the
@@ -120,7 +109,10 @@ double cudaScan(int *inarray, int *end, int *resultarray) {
 
   double startTime = CycleTimer::currentSeconds();
 
-  exclusive_scan(device_input, rounded_length, device_result);
+  int block_size = BLOCK_SIZE;
+  int grid_size = (rounded_length + block_size - 1) / block_size;
+  printf("rounded_length = %d\n", rounded_length);
+  exclusive_scan<<<grid_size, block_size, 2 * block_size * sizeof(int)>>>(device_input, rounded_length, device_result);
 
   // Wait for any work left over to be completed.
   cudaDeviceSynchronize();
