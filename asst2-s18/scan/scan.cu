@@ -26,7 +26,7 @@ static inline int nextPow2(int n) {
   return n;
 }
 
-constexpr int BLOCK_SIZE = 512;
+constexpr int BLOCK_SIZE = 1024;
 
 __global__ void exclusive_scan(int *device_start, int length, int *device_result) {
   /* Fill in this function with your exclusive scan implementation.
@@ -39,13 +39,9 @@ __global__ void exclusive_scan(int *device_start, int length, int *device_result
    * power of 2 larger than the input.
    */
 
-  extern __shared__ int temp[];
-  int tid = threadIdx.x;
+  int tid = blockDim.x * blockIdx.x + threadIdx.x;
   int offset = 1;
 
-  temp[2 * tid] = device_start[2 * tid];
-  temp[2 * tid + 1] = device_start[2 * tid + 1];
-  
   // upsweep
 
   for (int d = (length >> 1); d > 0; d >>= 1) {
@@ -53,31 +49,30 @@ __global__ void exclusive_scan(int *device_start, int length, int *device_result
     if (tid < d) {
       int ai = offset * (2 * tid + 1) - 1;
       int bi = offset * (2 * tid + 2) - 1;
-      temp[bi] += temp[ai];
+      device_result[bi] += device_result[ai];
     }
     offset *= 2;
   }
 
-  // downsweep
-
-  if (tid == 0) {
-    temp[length - 1] = 0;
-  }
-  for (int d = 1; d < length; d *= 2) {
-    offset >>= 1;
-    __syncthreads();
-    if (tid < d) {
-      int ai = offset * (2 * tid + 1) - 1;
-      int bi = offset * (2 * tid + 2) - 1;
-      float t = temp[ai];
-      temp[ai] = temp[bi];
-      temp[bi] += t;
-    }
-  }
+  // TODO: Perhaps the culprit of the bug
+  // if (tid == 0) {
+  //   device_result[length - 1] = 0;
+  // }
+  //
+  // // downsweep
+  // for (int d = 1; d < length; d *= 2) {
+  //   offset >>= 1;
+  //   __syncthreads();
+  //   if (tid < d) {
+  //     int ai = offset * (2 * tid + 1) - 1;
+  //     int bi = offset * (2 * tid + 2) - 1;
+  //     int t = device_result[ai];
+  //     device_result[ai] = device_result[bi];
+  //     device_result[bi] += t;
+  //   }
+  // }
   __syncthreads();
 
-  device_result[2 * tid] = temp[2 * tid];
-  device_result[2 * tid + 1] = temp[2 * tid + 1];
 }
 
 /* This function is a wrapper around the code you will write - it copies the
@@ -111,8 +106,7 @@ double cudaScan(int *inarray, int *end, int *resultarray) {
 
   int block_size = BLOCK_SIZE;
   int grid_size = (rounded_length + block_size - 1) / block_size;
-  printf("rounded_length = %d\n", rounded_length);
-  exclusive_scan<<<grid_size, block_size, 2 * block_size * sizeof(int)>>>(device_input, rounded_length, device_result);
+  exclusive_scan<<<grid_size, block_size>>>(device_input, rounded_length, device_result);
 
   // Wait for any work left over to be completed.
   cudaDeviceSynchronize();

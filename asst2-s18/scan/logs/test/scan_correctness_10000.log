@@ -1,9 +1,0 @@
----------------------------------------------------------
-Found 1 CUDA devices
-Device 0: NVIDIA GeForce MX150
-   SMs:        3
-   Global mem: 2003 MB
-   CUDA Cap:   6.1
----------------------------------------------------------
-GPU_time: 0.161 ms
-Scan outputs are correct!

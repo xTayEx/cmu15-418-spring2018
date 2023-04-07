@@ -5,27 +5,6 @@ Device 0: NVIDIA GeForce MX150
    Global mem: 2003 MB
    CUDA Cap:   6.1
 ---------------------------------------------------------
-grid_size = 1 block_size = 8
-grid_size = 1 block_size = 4
-grid_size = 1 block_size = 2
-grid_size = 1 block_size = 1
-grid_size = 1 block_size = 2
-grid_size = 1 block_size = 4
-grid_size = 1 block_size = 8
-grid_size = 1 block_size = 8
-grid_size = 1 block_size = 4
-grid_size = 1 block_size = 2
-grid_size = 1 block_size = 1
-grid_size = 1 block_size = 2
-grid_size = 1 block_size = 4
-grid_size = 1 block_size = 8
-grid_size = 1 block_size = 8
-grid_size = 1 block_size = 4
-grid_size = 1 block_size = 2
-grid_size = 1 block_size = 1
-grid_size = 1 block_size = 2
-grid_size = 1 block_size = 4
-grid_size = 1 block_size = 8
-GPU_time: 11.160 ms
+GPU_time: 8.019 ms
 ========= CUDA-MEMCHECK
 ========= ERROR SUMMARY: 0 errors
