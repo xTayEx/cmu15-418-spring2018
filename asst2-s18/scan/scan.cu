@@ -163,13 +163,29 @@ double cudaScanThrust(int *inarray, int *end, int *resultarray) {
   return overallDuration;
 }
 
-__global__ void find_repeats_kernel(int *prefix_sum_arr, int *arr, int *repeated_indicate, int length) {
+__global__ void kernel_cmp(int *input, int *output, int length) {
   int thid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (thid < length && thid % 2 == 0) {
-    int ai = thid;
-    int bi = thid + 1;
-    if (prefix_sum_arr[bi] - prefix_sum_arr[ai] == arr[bi]) {
-      repeated_indicate[bi] = 1;
+  if (thid < length - 1) {
+    if (input[thid] == input[thid + 1]) {
+      output[thid] = 1;
+    } else {
+      output[thid] = 0;
+    }
+  }
+}
+
+__global__ void kernel_sub(int *input, int *output, int length) {
+  int thid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (thid < length - 1) {
+    output[thid] = input[thid + 1] - input[thid];
+  }
+}
+
+__global__ void collect_repeat(int *prefix_sum, int *repeated_indicate, int *output, int length) {
+  int thid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (thid < length - 1) {
+    if (repeated_indicate[thid] == 1) {
+      output[prefix_sum[thid]] = thid;
     }
   }
 }
@@ -186,18 +202,28 @@ int find_repeats(int *device_input, int length, int *device_output) {
    * it requires that. However, you must ensure that the results of
    * find_repeats are correct given the original length.
    */
-  int *prefix_sum_result;
-  int *repeated_indicate;
-  cudaMalloc((void **)&prefix_sum_result, length * sizeof(int));
-  cudaMemcpy(prefix_sum_result, device_input, length * sizeof(int), cudaMemcpyDeviceToDevice);
-  exclusive_scan(prefix_sum_result, length, prefix_sum_result);
-  if (length <= MAX_BLOCK_SIZE) {
-    find_repeats_kernel(prefix_sum_result, device_input, bool *repeated_idx, length);
-  } else {
+  int *prefix_sum;
+  int *sub_result;
+  cudaMalloc((void **)&prefix_sum, length * sizeof(int));
+  cudaMalloc((void **)&sub_result, length * sizeof(int));
 
+  if (length <= MAX_BLOCK_SIZE) {
+    kernel_cmp<<<1, length - 1>>>(device_input, prefix_sum, length);
+    exclusive_scan(prefix_sum, length, prefix_sum);
+    kernel_sub<<<1, length - 1>>>(prefix_sum, sub_result, length);
+    collect_repeat<<<1, length - 1>>>(prefix_sum, sub_result, device_output, length);
+  } else {
+    int grid_size = (length + MAX_BLOCK_SIZE - 1) / MAX_BLOCK_SIZE; 
+    kernel_cmp<<<grid_size, MAX_BLOCK_SIZE>>>(device_input, prefix_sum, length);
+    exclusive_scan(prefix_sum, length, prefix_sum);
+    kernel_sub<<<grid_size, MAX_BLOCK_SIZE>>>(prefix_sum, sub_result, length);
+    collect_repeat<<<grid_size, MAX_BLOCK_SIZE>>>(prefix_sum, sub_result, device_output, length);
   }
+
+  int *repeated_cnt;
+  cudaMemcpy(repeated_cnt, prefix_sum + length - 1, sizeof(int), cudaMemcpyDeviceToHost);
    
-  return 0;
+  return *repeated_cnt;
 }
 
 /* Timing wrapper around find_repeats. You should not modify this function.
