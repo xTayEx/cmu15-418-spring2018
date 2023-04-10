@@ -1,3 +1,4 @@
+#include <__clang_cuda_builtin_vars.h>
 #include <iostream>
 #include <stdio.h>
 
@@ -162,6 +163,17 @@ double cudaScanThrust(int *inarray, int *end, int *resultarray) {
   return overallDuration;
 }
 
+__global__ void find_repeats_kernel(int *prefix_sum_arr, int *arr, int *repeated_indicate, int length) {
+  int thid = blockIdx.x * blockDim.x + threadIdx.x;
+  if (thid < length && thid % 2 == 0) {
+    int ai = thid;
+    int bi = thid + 1;
+    if (prefix_sum_arr[bi] - prefix_sum_arr[ai] == arr[bi]) {
+      repeated_indicate[bi] = 1;
+    }
+  }
+}
+
 int find_repeats(int *device_input, int length, int *device_output) {
   /* Finds all pairs of adjacent repeated elements in the list, storing the
    * indices of the first element of each pair (in order) into device_result.
@@ -174,6 +186,17 @@ int find_repeats(int *device_input, int length, int *device_output) {
    * it requires that. However, you must ensure that the results of
    * find_repeats are correct given the original length.
    */
+  int *prefix_sum_result;
+  int *repeated_indicate;
+  cudaMalloc((void **)&prefix_sum_result, length * sizeof(int));
+  cudaMemcpy(prefix_sum_result, device_input, length * sizeof(int), cudaMemcpyDeviceToDevice);
+  exclusive_scan(prefix_sum_result, length, prefix_sum_result);
+  if (length <= MAX_BLOCK_SIZE) {
+    find_repeats_kernel(prefix_sum_result, device_input, bool *repeated_idx, length);
+  } else {
+
+  }
+   
   return 0;
 }
 
