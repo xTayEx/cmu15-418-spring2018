@@ -8,6 +8,7 @@
 #include <cuda_runtime.h>
 #include <driver_functions.h>
 
+#include "circleRenderer.h"
 #include "cudaRenderer.h"
 #include "image.h"
 #include "noise.h"
@@ -31,31 +32,6 @@ struct GlobalConstants {
   int imageWidth;
   int imageHeight;
   float *imageData;
-};
-
-class Lock {
-
-private:
-  int *mtx;
-
-public:
-  Lock() {
-    int state = 0;
-    cudaMalloc((void **)&mtx, sizeof(int));
-    cudaMemcpy(mtx, &state, sizeof(int), cudaMemcpyHostToDevice);
-  }
-
-  ~Lock() {
-    cudaFree(mtx);
-  }
-
-  __device__ void lock() {
-    while (atomicCAS(mtx, 0, 1) != 0);
-  }
-
-  __device__ void unlock() {
-    atomicExch(mtx, 0);
-  }
 };
 
 // Global variable that is in scope, but read-only, for all cuda
@@ -390,10 +366,6 @@ __device__ __inline__ void shadePixel(int circleIndex, float2 pixelCenter,
   // BEGIN SHOULD-BE-ATOMIC REGION
   // global memory read
   
-  __shared__ int mtx;
-  mtx = 0;
-  while (atomicCAS(&mtx, 0, 1) != 0);
-
   float4 existingColor = *imagePtr;
 
   float newColorXFormer = oneMinusAlpha;
@@ -405,8 +377,6 @@ __device__ __inline__ void shadePixel(int circleIndex, float2 pixelCenter,
 
   // Global memory write
   *imagePtr = newColor;
-  
-  atomicExch(&mtx, 0);
   // END SHOULD-BE-ATOMIC REGION
 }
 
@@ -415,7 +385,7 @@ __device__ __inline__ void shadePixel(int circleIndex, float2 pixelCenter,
 // Each thread renders a circle.  Since there is no protection to
 // ensure order of update or mutual exclusion on the output image, the
 // resulting image will be incorrect.
-__global__ void kernelRenderCircles() {
+__global__ void oldKernelRenderCircles() {
 
   int index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -461,6 +431,82 @@ __global__ void kernelRenderCircles() {
       imgPtr++;
     }
   }
+}
+
+__global__ void kernelRenderCircles() {
+  int pixelX = blockIdx.x * blockDim.x + threadIdx.x;
+  int pixelY = blockIdx.y * blockDim.y + threadIdx.y;
+  
+  int imageWidth = cuConstRendererParams.imageWidth;
+  int imageHeight = cuConstRendererParams.imageHeight;
+
+  int numCircles = cuConstRendererParams.numCircles;
+
+  if ((pixelX > imageWidth) || (pixelY > imageHeight)) {
+    return;
+  }
+
+  float invWidth = 1.0f / imageWidth;
+  float invHeight = 1.0f / imageHeight;
+
+  float2 pixelCenter = make_float2(invWidth * (static_cast<float>(pixelX) + 0.5f), 
+                                   invHeight * (static_cast<float>(pixelY) + 0.5f));
+
+  for (int circleIdx = 0; circleIdx < numCircles; ++circleIdx) {
+    int index3 = 3 * circleIdx;
+    
+    float px = cuConstRendererParams.position[index3];
+    float py = cuConstRendererParams.position[index3 + 1];
+    float pz = cuConstRendererParams.position[index3 + 2];
+
+    float3 p = make_float3(px, py, pz);
+
+    float diffX = px - pixelX;
+    float diffY = py - pixelY;
+    float pixelDist = diffX * diffX + diffY * diffY;
+
+    float rad = cuConstRendererParams.radius[circleIdx];
+
+    if (pixelDist > rad * rad) {
+      return;
+    }
+
+    float3 rgb;
+    float alpha;
+    if (cuConstRendererParams.sceneName == SNOWFLAKES
+        || cuConstRendererParams.sceneName == SNOWFLAKES_SINGLE_FRAME) {
+      const float kCircleMaxAlpha = .5f;
+      const float falloffScale = 4.f;
+
+      float normPixelDist = sqrt(pixelDist) / rad;
+      rgb = lookupColor(normPixelDist);
+
+      float maxAlpha = .6f + .4f * (1.f - p.z);
+      maxAlpha = kCircleMaxAlpha * fmaxf(fminf(maxAlpha, 1.f),
+                                        0.f); // kCircleMaxAlpha * clamped value
+      alpha = maxAlpha * exp(-1.f * falloffScale * normPixelDist * normPixelDist);
+    } else {
+
+      int index3 = 3 * circleIdx;
+      rgb = *(float3 *)&(cuConstRendererParams.color[index3]);
+      alpha = .5f;
+    }
+    
+    float oneMinusAlpha = 1.f - alpha;
+    int pixelIndex = (pixelY * imageWidth + pixelX) * 4;
+    float4 *imgPtr = (float4 *)(&cuConstRendererParams.imageData[pixelIndex]);
+    float4 existingColor = *imgPtr;
+
+    float4 newColor;
+    newColor.x = alpha * rgb.x + oneMinusAlpha * existingColor.x;
+    newColor.y = alpha * rgb.y + oneMinusAlpha * existingColor.y;
+    newColor.z = alpha * rgb.z + oneMinusAlpha * existingColor.z;
+    newColor.z = alpha + existingColor.w;
+
+    *imgPtr = newColor;
+
+  }
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -675,10 +721,16 @@ void CudaRenderer::advanceAnimation() {
 
 void CudaRenderer::render() {
 
+#ifdef USE_SOLUTION
+  dim3 blockDim(16, 16);
+  dim3 gridDim((image->width + blockDim.x - 1) / blockDim.x,
+               (image->height + blockDim.y - 1) / blockDim.y);
+  kernelRenderCircles<<<gridDim, blockDim>>>();
+#else
   // 256 threads per block is a healthy number
   dim3 blockDim(256, 1);
   dim3 gridDim((numCircles + blockDim.x - 1) / blockDim.x);
-
-  kernelRenderCircles<<<gridDim, blockDim>>>();
+  oldKernelRenderCircles<<<gridDim, blockDim>>>();
+#endif
   cudaDeviceSynchronize();
 }
