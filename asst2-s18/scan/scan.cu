@@ -1,4 +1,3 @@
-#include <__clang_cuda_builtin_vars.h>
 #include <iostream>
 #include <stdio.h>
 
@@ -202,28 +201,28 @@ int find_repeats(int *device_input, int length, int *device_output) {
    * it requires that. However, you must ensure that the results of
    * find_repeats are correct given the original length.
    */
+  int rounded_length = nextPow2(length);
   int *prefix_sum;
   int *sub_result;
-  cudaMalloc((void **)&prefix_sum, length * sizeof(int));
-  cudaMalloc((void **)&sub_result, length * sizeof(int));
+  cudaMalloc((void **)&prefix_sum, rounded_length * sizeof(int));
+  cudaMalloc((void **)&sub_result, rounded_length * sizeof(int));
 
   if (length <= MAX_BLOCK_SIZE) {
     kernel_cmp<<<1, length - 1>>>(device_input, prefix_sum, length);
-    exclusive_scan(prefix_sum, length, prefix_sum);
+    exclusive_scan(prefix_sum, rounded_length, prefix_sum);
     kernel_sub<<<1, length - 1>>>(prefix_sum, sub_result, length);
     collect_repeat<<<1, length - 1>>>(prefix_sum, sub_result, device_output, length);
   } else {
     int grid_size = (length + MAX_BLOCK_SIZE - 1) / MAX_BLOCK_SIZE; 
     kernel_cmp<<<grid_size, MAX_BLOCK_SIZE>>>(device_input, prefix_sum, length);
-    exclusive_scan(prefix_sum, length, prefix_sum);
+    exclusive_scan(prefix_sum, rounded_length, prefix_sum);
     kernel_sub<<<grid_size, MAX_BLOCK_SIZE>>>(prefix_sum, sub_result, length);
     collect_repeat<<<grid_size, MAX_BLOCK_SIZE>>>(prefix_sum, sub_result, device_output, length);
   }
 
-  int *repeated_cnt;
-  cudaMemcpy(repeated_cnt, prefix_sum + length - 1, sizeof(int), cudaMemcpyDeviceToHost);
-   
-  return *repeated_cnt;
+  int repeated_cnt;
+  cudaMemcpy(&repeated_cnt, prefix_sum + length - 1, sizeof(int), cudaMemcpyDeviceToHost);
+  return repeated_cnt;
 }
 
 /* Timing wrapper around find_repeats. You should not modify this function.
